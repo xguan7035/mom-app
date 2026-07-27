@@ -10,30 +10,38 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 2. 自定义手机端样式：针对高对比度、大字体优化
+# 2. 自定义手机端样式：全面针对大字、高对比度优化
 st.markdown("""
     <style>
     .big-font { font-size:26px !important; font-weight: bold; }
-    .profit-up { color: #00ff66; font-weight: bold; font-size: 16px; }
-    .profit-down { color: #ff4d4d; font-weight: bold; font-size: 16px; }
+    /* 亮绿色：涨 */
+    .profit-up { color: #00ff66 !important; font-weight: bold; font-size: 18px !important; }
+    /* 亮红色：跌 */
+    .profit-down { color: #ff5555 !important; font-weight: bold; font-size: 18px !important; }
+    
     .card {
-        background-color: #1e1e2e;
+        background-color: #181924;
         padding: 16px;
         border-radius: 12px;
         margin-bottom: 8px;
-        border: 1px solid #313244;
+        border: 1px solid #3b3d54;
         border-left: 6px solid #00d2ff;
     }
     .highlight-text {
-        color: #ffd700 !important; /* 亮金色高亮 */
+        color: #ffd700 !important; /* 金黄色 */
         font-size: 16px !important;
+        font-weight: bold !important;
+    }
+    .label-text {
+        color: #ffffff !important; /* 纯白大字 */
+        font-size: 15px !important;
         font-weight: bold !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
 st.title("❤️ 妈妈的专属美股看板")
-st.caption("📱 手机大字清晰版 · 结算货币：美金 (USD)")
+st.caption("📱 结算货币：美金 (USD)")
 
 # 3. 新浪实时行情获取函数
 def get_sina_price(symbol):
@@ -130,7 +138,7 @@ with col_total1:
     color_class = "profit-up" if total_profit >= 0 else "profit-down"
     sign = "+" if total_profit >= 0 else ""
     st.markdown(f"历史总盈亏<br><span class='big-font {color_class}'>{sign}${total_profit:.2f} USD</span>", unsafe_allow_html=True)
-    st.markdown(f"总盈亏比例：<span class='{color_class}'>{sign}{total_profit_ratio:.2f}%</span>", unsafe_allow_html=True)
+    st.markdown(f"<span class='label-text'>总盈亏比例：</span><span class='{color_class}'>{sign}{total_profit_ratio:.2f}%</span>", unsafe_allow_html=True)
 
 with col_total2:
     color_class_d = "profit-up" if total_daily_profit >= 0 else "profit-down"
@@ -139,7 +147,7 @@ with col_total2:
 
 st.write("---")
 
-# 📱 8. 单只股票卡片（大字高对比度版本）
+# 📱 8. 单只股票卡片（底部文字大幅加粗放大）
 st.write("### 📈 我的持仓明细")
 if not calculated_stocks:
     st.info("💡 当前没有记录，请点击上方“➕”记一笔买入！")
@@ -151,21 +159,27 @@ else:
         d_color = "profit-up" if s["daily_profit"] >= 0 else "profit-down"
         d_sign = "+" if s["daily_profit"] >= 0 else ""
         
-        # 渲染大字卡片
+        # 渲染卡片
         st.markdown(f"""
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 22px; font-weight: bold; color: #ffffff;">{s['sym']}</span>
-                    <span style="font-size: 19px; font-weight: bold; color: #ffffff;">实时价: ${s['price']:.2f}</span>
+                    <span style="font-size: 24px; font-weight: bold; color: #ffffff;">{s['sym']}</span>
+                    <span style="font-size: 20px; font-weight: bold; color: #ffffff;">实时价: ${s['price']:.2f}</span>
                 </div>
                 <div style="margin-top: 8px; margin-bottom: 4px;">
                     <span class="highlight-text">📐 评估均价: ${s['avg_cost']:.2f} USD</span>
-                    <span style="color: #ffffff; font-size: 15px; font-weight: bold; margin-left: 10px;">| 持仓: {s['shares']}股</span>
+                    <span style="color: #ffffff; font-size: 16px; font-weight: bold; margin-left: 10px;">| 持仓: {s['shares']}股</span>
                 </div>
-                <hr style="margin: 10px 0; border-color: #444466;">
-                <div style="display: flex; justify-content: space-between;">
-                    <div>今日波动:<br><span class="{d_color}">{d_sign}${s['daily_profit']:.2f} ({d_sign}{s['daily_ratio']:.2f}%)</span></div>
-                    <div>累计盈亏:<br><span class="{p_color}">{p_sign}${s['profit']:.2f} ({p_sign}{s['profit_ratio']:.2f}%)</span></div>
+                <hr style="margin: 10px 0; border-color: #555577;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <div class="label-text">今日波动</div>
+                        <div class="{d_color}">{d_sign}${s['daily_profit']:.2f}<br>({d_sign}{s['daily_ratio']:.2f}%)</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div class="label-text">累计盈亏</div>
+                        <div class="{p_color}">{p_sign}${s['profit']:.2f}<br>({p_sign}{s['profit_ratio']:.2f}%)</div>
+                    </div>
                 </div>
             </div>
         """, unsafe_allow_html=True)
