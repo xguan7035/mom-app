@@ -11,7 +11,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 2. 自定义手机端样式：针对高对比度、紧凑布局优化
+# 2. 自定义手机端大字高对比度样式
 st.markdown("""
     <style>
     .big-font { font-size:26px !important; font-weight: bold; }
@@ -20,15 +20,19 @@ st.markdown("""
     
     .card {
         background-color: #181924;
-        padding: 14px;
+        padding: 16px;
         border-radius: 12px;
-        margin-bottom: 12px;
+        margin-bottom: 10px;
         border: 1px solid #3b3d54;
         border-left: 6px solid #00d2ff;
     }
-    .highlight-text {
+    .avg-price-title {
+        color: #aaaaaa !important;
+        font-size: 14px !important;
+    }
+    .avg-price-val {
         color: #ffd700 !important;
-        font-size: 16px !important;
+        font-size: 22px !important;
         font-weight: bold !important;
     }
     .label-text {
@@ -40,7 +44,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("❤️ 妈妈的专属美股看板")
-st.caption("📱 手机紧凑大字版 · 结算货币：美金 (USD)")
+st.caption("📱 自动评估均价 · 多次买入管理版 (USD 美金)")
 
 # 3. 新浪实时行情获取函数
 def get_sina_price(symbol):
@@ -60,31 +64,32 @@ def get_sina_price(symbol):
         pass
     return None, None
 
-# 4. 初始化持仓数据
+# 4. 初始化持仓数据（多笔买入结构）
 if "records" not in st.session_state:
     st.session_state.records = {
         "GOOG": [
-            {"price": 170.0, "shares": 10}
+            {"price": 95.0, "shares": 10},
+            {"price": 100.0, "shares": 10}
         ]
     }
 
-# 5. ➕ 记一笔买入 / 加仓区域
-with st.expander("➕ 记一笔买入 / 加仓（系统自动评估均价）", expanded=False):
-    with st.form("add_buy_form"):
+# 5. ➕ 首次建仓添加股票
+with st.expander("➕ 添加新股票 / 建仓", expanded=False):
+    with st.form("add_new_stock_form"):
         col1, col2, col3 = st.columns(3)
         with col1:
             sym = st.text_input("股票代码", value="NVDA").upper().strip()
         with col2:
-            cst = st.number_input("本次买入价($)", value=100.0, min_value=0.01)
+            cst = st.number_input("买入单价($)", value=100.0, min_value=0.01)
         with col3:
-            shr = st.number_input("本次买入股数", value=10, min_value=1, step=1)
+            shr = st.number_input("买入股数", value=10, min_value=1, step=1)
         
-        submit = st.form_submit_button("确认记录本次买入")
+        submit = st.form_submit_button("确认建仓")
         if submit and sym:
             if sym not in st.session_state.records:
                 st.session_state.records[sym] = []
             st.session_state.records[sym].append({"price": cst, "shares": shr})
-            st.success(f"成功记录 {sym} 本次买入！")
+            st.success(f"成功添加股票 {sym}！")
             st.rerun()
 
 # 6. 核心计算逻辑
@@ -97,6 +102,7 @@ for sym, buy_list in list(st.session_state.records.items()):
     if not buy_list:
         continue
     
+    # 自动加权评估均价
     stock_total_cost = sum(item["price"] * item["shares"] for item in buy_list)
     stock_total_shares = sum(item["shares"] for item in buy_list)
     avg_cost = stock_total_cost / stock_total_shares if stock_total_shares > 0 else 0.0
@@ -120,7 +126,7 @@ for sym, buy_list in list(st.session_state.records.items()):
             "price": price,
             "avg_cost": avg_cost,
             "shares": stock_total_shares,
-            "buy_count": len(buy_list),
+            "buy_list": buy_list,
             "profit": profit,
             "profit_ratio": profit_ratio,
             "daily_profit": daily_profit,
@@ -146,10 +152,10 @@ with col_total2:
 
 st.write("---")
 
-# 📱 8. 单只股票卡片（价格直观上方直接内嵌走势图）
+# 📱 8. 持仓明细与加仓管理
 st.write("### 📈 我的持仓明细")
 if not calculated_stocks:
-    st.info("💡 当前没有记录，请点击上方“➕”记一笔买入！")
+    st.info("💡 当前没有记录，请点击上方“➕”建仓添加股票！")
 else:
     for s in calculated_stocks:
         p_color = "profit-up" if s["profit"] >= 0 else "profit-down"
@@ -158,18 +164,18 @@ else:
         d_color = "profit-up" if s["daily_profit"] >= 0 else "profit-down"
         d_sign = "+" if s["daily_profit"] >= 0 else ""
         
-        # 1. 股票基本数据卡片
+        # 1. 主卡片（突出显示评估均价与总持仓）
         st.markdown(f"""
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 24px; font-weight: bold; color: #ffffff;">{s['sym']}</span>
+                    <span style="font-size: 26px; font-weight: bold; color: #ffffff;">{s['sym']}</span>
                     <span style="font-size: 20px; font-weight: bold; color: #ffffff;">实时价: ${s['price']:.2f}</span>
                 </div>
-                <div style="margin-top: 8px; margin-bottom: 4px;">
-                    <span class="highlight-text">📐 评估均价: ${s['avg_cost']:.2f} USD</span>
-                    <span style="color: #ffffff; font-size: 16px; font-weight: bold; margin-left: 10px;">| 持仓: {s['shares']}股</span>
+                <div style="margin-top: 10px; background-color: #252836; padding: 10px; border-radius: 8px;">
+                    <div class="avg-price-title">📐 系统自动评估均价 (共 {len(s['buy_list'])} 次买入)</div>
+                    <div class="avg-price-val">${s['avg_cost']:.2f} USD <span style="font-size: 16px; color: #ffffff; font-weight: normal;">| 总持仓: {s['shares']} 股</span></div>
                 </div>
-                <hr style="margin: 10px 0; border-color: #555577;">
+                <hr style="margin: 12px 0; border-color: #555577;">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                     <div>
                         <div class="label-text">今日波动</div>
@@ -183,7 +189,35 @@ else:
             </div>
         """, unsafe_allow_html=True)
         
-        # 2. 精简型走势图Widget（高度只有220px，紧凑精致不占地）
+        # 2. 加仓与买入明细折叠菜单
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            with st.expander(f"➕ 再次买入/加仓 {s['sym']} 或查看购买明细"):
+                # 显示历史买入列表
+                st.write("**历史买入记录：**")
+                for idx, b in enumerate(s['buy_list']):
+                    st.caption(f"第 {idx+1} 笔: 单价 ${b['price']:.2f} USD × {b['shares']} 股")
+                
+                # 追加买入表单
+                st.write("**添加新买入记录：**")
+                with st.form(f"buy_more_form_{s['sym']}"):
+                    col_b1, col_b2 = st.columns(2)
+                    with col_b1:
+                        add_price = st.number_input("本次加仓价($)", value=s['price'], key=f"p_{s['sym']}")
+                    with col_b2:
+                        add_shares = st.number_input("本次加仓股数", value=10, min_value=1, key=f"s_{s['sym']}")
+                    
+                    if st.form_submit_button("确认加仓（自动重新计算均价）"):
+                        st.session_state.records[s['sym']].append({"price": add_price, "shares": add_shares})
+                        st.success(f"已记录 {s['sym']} 新买入！均价已重新评估。")
+                        st.rerun()
+
+        with c2:
+            if st.button("🗑️ 清空", key=f"del_{s['sym']}"):
+                del st.session_state.records[s['sym']]
+                st.rerun()
+
+        # 3. 紧凑型精简走势图
         tv_mini_html = f"""
         <div class="tradingview-widget-container">
           <div id="tradingview_mini_{s['sym']}"></div>
@@ -191,7 +225,7 @@ else:
           <script type="text/javascript">
           new TradingView.widget({{
             "width": "100%",
-            "height": 210,
+            "height": 200,
             "symbol": "{s['sym']}",
             "interval": "D",
             "timezone": "Etc/UTC",
@@ -208,11 +242,5 @@ else:
           </script>
         </div>
         """
-        components.html(tv_mini_html, height=215)
-        
-        c1, c2 = st.columns([5, 1])
-        with c2:
-            if st.button("🗑️ 清空", key=f"del_{s['sym']}"):
-                del st.session_state.records[s['sym']]
-                st.rerun()
+        components.html(tv_mini_html, height=205)
         st.write("---")
