@@ -1,1 +1,3 @@
-app
+streamlit
+plotly
+yfinance
