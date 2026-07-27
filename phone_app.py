@@ -11,7 +11,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 2. 自定义手机端样式
+# 2. 自定义手机端样式：针对高对比度、紧凑布局优化
 st.markdown("""
     <style>
     .big-font { font-size:26px !important; font-weight: bold; }
@@ -20,9 +20,9 @@ st.markdown("""
     
     .card {
         background-color: #181924;
-        padding: 16px;
+        padding: 14px;
         border-radius: 12px;
-        margin-bottom: 8px;
+        margin-bottom: 12px;
         border: 1px solid #3b3d54;
         border-left: 6px solid #00d2ff;
     }
@@ -40,7 +40,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("❤️ 妈妈的专属美股看板")
-st.caption("📱 手机大字专业走势图版 · 结算货币：美金 (USD)")
+st.caption("📱 手机紧凑大字版 · 结算货币：美金 (USD)")
 
 # 3. 新浪实时行情获取函数
 def get_sina_price(symbol):
@@ -146,8 +146,8 @@ with col_total2:
 
 st.write("---")
 
-# 📱 8. 持仓明细与 TradingView 高清嵌入图表
-st.write("### 📈 我的持仓明细与走势图")
+# 📱 8. 单只股票卡片（价格直观上方直接内嵌走势图）
+st.write("### 📈 我的持仓明细")
 if not calculated_stocks:
     st.info("💡 当前没有记录，请点击上方“➕”记一笔买入！")
 else:
@@ -158,7 +158,7 @@ else:
         d_color = "profit-up" if s["daily_profit"] >= 0 else "profit-down"
         d_sign = "+" if s["daily_profit"] >= 0 else ""
         
-        # 渲染资产卡片
+        # 1. 股票基本数据卡片
         st.markdown(f"""
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -183,34 +183,33 @@ else:
             </div>
         """, unsafe_allow_html=True)
         
-        # 📈 TradingView 交互走势图组件（秒级加载、永不报错）
-        with st.expander(f"📉 点击查看 {s['sym']} 实时走势图", expanded=True):
-            tv_html = f"""
-            <div class="tradingview-widget-container">
-              <div id="tradingview_{s['sym']}"></div>
-              <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-              <script type="text/javascript">
-              new TradingView.widget({{
-                "width": "100%",
-                "height": 380,
-                "symbol": "{s['sym']}",
-                "interval": "D",
-                "timezone": "Etc/UTC",
-                "theme": "dark",
-                "style": "3",
-                "locale": "zh_CN",
-                "toolbar_bg": "#f1f3f6",
-                "enable_publishing": false,
-                "hide_top_toolbar": false,
-                "hide_legend": true,
-                "save_image": false,
-                "container_id": "tradingview_{s['sym']}"
-              }});
-              </script>
-            </div>
-            """
-            components.html(tv_html, height=390)
-
+        # 2. 精简型走势图Widget（高度只有220px，紧凑精致不占地）
+        tv_mini_html = f"""
+        <div class="tradingview-widget-container">
+          <div id="tradingview_mini_{s['sym']}"></div>
+          <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+          <script type="text/javascript">
+          new TradingView.widget({{
+            "width": "100%",
+            "height": 210,
+            "symbol": "{s['sym']}",
+            "interval": "D",
+            "timezone": "Etc/UTC",
+            "theme": "dark",
+            "style": "2",
+            "locale": "zh_CN",
+            "toolbar_bg": "#f1f3f6",
+            "enable_publishing": false,
+            "hide_top_toolbar": true,
+            "hide_legend": true,
+            "save_image": false,
+            "container_id": "tradingview_mini_{s['sym']}"
+          }});
+          </script>
+        </div>
+        """
+        components.html(tv_mini_html, height=215)
+        
         c1, c2 = st.columns([5, 1])
         with c2:
             if st.button("🗑️ 清空", key=f"del_{s['sym']}"):
