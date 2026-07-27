@@ -1,8 +1,7 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import urllib.request
 import re
-import yfinance as yf
-import plotly.graph_objects as go
 
 # 1. 页面配置
 st.set_page_config(
@@ -41,7 +40,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("❤️ 妈妈的专属美股看板")
-st.caption("📱 手机大字走势图版 · 结算货币：美金 (USD)")
+st.caption("📱 手机大字专业走势图版 · 结算货币：美金 (USD)")
 
 # 3. 新浪实时行情获取函数
 def get_sina_price(symbol):
@@ -147,7 +146,7 @@ with col_total2:
 
 st.write("---")
 
-# 📱 8. 持仓明细展示与走势图
+# 📱 8. 持仓明细与 TradingView 高清嵌入图表
 st.write("### 📈 我的持仓明细与走势图")
 if not calculated_stocks:
     st.info("💡 当前没有记录，请点击上方“➕”记一笔买入！")
@@ -159,7 +158,7 @@ else:
         d_color = "profit-up" if s["daily_profit"] >= 0 else "profit-down"
         d_sign = "+" if s["daily_profit"] >= 0 else ""
         
-        # 股票概览卡片
+        # 渲染资产卡片
         st.markdown(f"""
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -184,53 +183,33 @@ else:
             </div>
         """, unsafe_allow_html=True)
         
-        # 📈 走势图展开折叠面板（带有 1M, 3M, 6M, 1Y 时间选择）
-        with st.expander(f"📉 查看 {s['sym']} 历史价格走势图", expanded=True):
-            period = st.radio(
-                "选择显示区间：", 
-                ["1个月", "3个月", "6个月", "1年"], 
-                horizontal=True, 
-                key=f"period_{s['sym']}"
-            )
-            
-            period_map = {"1个月": "1mo", "3个月": "3mo", "6个月": "6mo", "1年": "1y"}
-            
-            try:
-                # 获取历史数据
-                ticker = yf.Ticker(s['sym'])
-                df = ticker.history(period=period_map[period])
-                
-                if not df.empty:
-                    # 绘制高清暗黑风格折线走势图
-                    fig = go.Figure()
-                    
-                    # 决定线条颜色（根据首尾涨跌）
-                    line_color = "#00ff66" if df['Close'].iloc[-1] >= df['Close'].iloc[0] else "#ff5555"
-                    
-                    fig.add_trace(go.Scatter(
-                        x=df.index, 
-                        y=df['Close'], 
-                        mode='lines',
-                        name='收盘价',
-                        line=dict(color=line_color, width=2.5),
-                        fill='tozeroy',
-                        fillcolor='rgba(0, 255, 102, 0.1)' if line_color == "#00ff66" else 'rgba(255, 85, 85, 0.1)'
-                    ))
-                    
-                    fig.update_layout(
-                        margin=dict(l=10, r=10, t=10, b=10),
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        height=260,
-                        xaxis=dict(showgrid=False, font=dict(color='white')),
-                        yaxis=dict(showgrid=True, gridcolor='#333344', font=dict(color='white')),
-                        hovermode="x unified"
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.warning("暂未获取到走势图数据。")
-            except Exception as e:
-                st.error("走势图加载失败，请检查网络或稍后再试。")
+        # 📈 TradingView 交互走势图组件（秒级加载、永不报错）
+        with st.expander(f"📉 点击查看 {s['sym']} 实时走势图", expanded=True):
+            tv_html = f"""
+            <div class="tradingview-widget-container">
+              <div id="tradingview_{s['sym']}"></div>
+              <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+              <script type="text/javascript">
+              new TradingView.widget({{
+                "width": "100%",
+                "height": 380,
+                "symbol": "{s['sym']}",
+                "interval": "D",
+                "timezone": "Etc/UTC",
+                "theme": "dark",
+                "style": "3",
+                "locale": "zh_CN",
+                "toolbar_bg": "#f1f3f6",
+                "enable_publishing": false,
+                "hide_top_toolbar": false,
+                "hide_legend": true,
+                "save_image": false,
+                "container_id": "tradingview_{s['sym']}"
+              }});
+              </script>
+            </div>
+            """
+            components.html(tv_html, height=390)
 
         c1, c2 = st.columns([5, 1])
         with c2:
