@@ -1,6 +1,8 @@
 import streamlit as st
 import urllib.request
 import re
+import yfinance as yf
+import plotly.graph_objects as go
 
 # 1. 页面配置
 st.set_page_config(
@@ -10,13 +12,11 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 2. 自定义手机端样式：全面针对大字、高对比度优化
+# 2. 自定义手机端样式
 st.markdown("""
     <style>
     .big-font { font-size:26px !important; font-weight: bold; }
-    /* 亮绿色：涨 */
     .profit-up { color: #00ff66 !important; font-weight: bold; font-size: 18px !important; }
-    /* 亮红色：跌 */
     .profit-down { color: #ff5555 !important; font-weight: bold; font-size: 18px !important; }
     
     .card {
@@ -28,12 +28,12 @@ st.markdown("""
         border-left: 6px solid #00d2ff;
     }
     .highlight-text {
-        color: #ffd700 !important; /* 金黄色 */
+        color: #ffd700 !important;
         font-size: 16px !important;
         font-weight: bold !important;
     }
     .label-text {
-        color: #ffffff !important; /* 纯白大字 */
+        color: #ffffff !important;
         font-size: 15px !important;
         font-weight: bold !important;
     }
@@ -41,7 +41,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("❤️ 妈妈的专属美股看板")
-st.caption("📱 结算货币：美金 (USD)")
+st.caption("📱 手机大字走势图版 · 结算货币：美金 (USD)")
 
 # 3. 新浪实时行情获取函数
 def get_sina_price(symbol):
@@ -147,8 +147,8 @@ with col_total2:
 
 st.write("---")
 
-# 📱 8. 单只股票卡片（底部文字大幅加粗放大）
-st.write("### 📈 我的持仓明细")
+# 📱 8. 持仓明细展示与走势图
+st.write("### 📈 我的持仓明细与走势图")
 if not calculated_stocks:
     st.info("💡 当前没有记录，请点击上方“➕”记一笔买入！")
 else:
@@ -159,7 +159,7 @@ else:
         d_color = "profit-up" if s["daily_profit"] >= 0 else "profit-down"
         d_sign = "+" if s["daily_profit"] >= 0 else ""
         
-        # 渲染卡片
+        # 股票概览卡片
         st.markdown(f"""
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -184,8 +184,57 @@ else:
             </div>
         """, unsafe_allow_html=True)
         
+        # 📈 走势图展开折叠面板（带有 1M, 3M, 6M, 1Y 时间选择）
+        with st.expander(f"📉 查看 {s['sym']} 历史价格走势图", expanded=True):
+            period = st.radio(
+                "选择显示区间：", 
+                ["1个月", "3个月", "6个月", "1年"], 
+                horizontal=True, 
+                key=f"period_{s['sym']}"
+            )
+            
+            period_map = {"1个月": "1mo", "3个月": "3mo", "6个月": "6mo", "1年": "1y"}
+            
+            try:
+                # 获取历史数据
+                ticker = yf.Ticker(s['sym'])
+                df = ticker.history(period=period_map[period])
+                
+                if not df.empty:
+                    # 绘制高清暗黑风格折线走势图
+                    fig = go.Figure()
+                    
+                    # 决定线条颜色（根据首尾涨跌）
+                    line_color = "#00ff66" if df['Close'].iloc[-1] >= df['Close'].iloc[0] else "#ff5555"
+                    
+                    fig.add_trace(go.Scatter(
+                        x=df.index, 
+                        y=df['Close'], 
+                        mode='lines',
+                        name='收盘价',
+                        line=dict(color=line_color, width=2.5),
+                        fill='tozeroy',
+                        fillcolor='rgba(0, 255, 102, 0.1)' if line_color == "#00ff66" else 'rgba(255, 85, 85, 0.1)'
+                    ))
+                    
+                    fig.update_layout(
+                        margin=dict(l=10, r=10, t=10, b=10),
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        height=260,
+                        xaxis=dict(showgrid=False, font=dict(color='white')),
+                        yaxis=dict(showgrid=True, gridcolor='#333344', font=dict(color='white')),
+                        hovermode="x unified"
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.warning("暂未获取到走势图数据。")
+            except Exception as e:
+                st.error("走势图加载失败，请检查网络或稍后再试。")
+
         c1, c2 = st.columns([5, 1])
         with c2:
             if st.button("🗑️ 清空", key=f"del_{s['sym']}"):
                 del st.session_state.records[s['sym']]
                 st.rerun()
+        st.write("---")
