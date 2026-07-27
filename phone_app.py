@@ -10,24 +10,30 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 2. 自定义手机端样式
+# 2. 自定义手机端样式：针对高对比度、大字体优化
 st.markdown("""
     <style>
-    .big-font { font-size:24px !important; font-weight: bold; }
-    .profit-up { color: #00cc66; font-weight: bold; }
-    .profit-down { color: #ff3333; font-weight: bold; }
+    .big-font { font-size:26px !important; font-weight: bold; }
+    .profit-up { color: #00ff66; font-weight: bold; font-size: 16px; }
+    .profit-down { color: #ff4d4d; font-weight: bold; font-size: 16px; }
     .card {
-        background-color: #262730;
-        padding: 15px;
-        border-radius: 10px;
-        margin-bottom: 5px;
-        border-left: 5px solid #1E90FF;
+        background-color: #1e1e2e;
+        padding: 16px;
+        border-radius: 12px;
+        margin-bottom: 8px;
+        border: 1px solid #313244;
+        border-left: 6px solid #00d2ff;
+    }
+    .highlight-text {
+        color: #ffd700 !important; /* 亮金色高亮 */
+        font-size: 16px !important;
+        font-weight: bold !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
 st.title("❤️ 妈妈的专属美股看板")
-st.caption("📱 手机专用版 · 自动评估持仓均价 (USD)")
+st.caption("📱 手机大字清晰版 · 结算货币：美金 (USD)")
 
 # 3. 新浪实时行情获取函数
 def get_sina_price(symbol):
@@ -47,8 +53,7 @@ def get_sina_price(symbol):
         pass
     return None, None
 
-# 4. 初始化数据（存储买入历史，用于精确计算加权平均成本）
-# 数据结构：{ 股票代码: [ {"price": 买入价, "shares": 股数}, ... ] }
+# 4. 初始化持仓数据
 if "records" not in st.session_state:
     st.session_state.records = {
         "GOOG": [
@@ -56,7 +61,7 @@ if "records" not in st.session_state:
         ]
     }
 
-# 5. ➕ 加仓 / 新增买入区域（自动算均价的核心）
+# 5. ➕ 记一笔买入 / 加仓区域
 with st.expander("➕ 记一笔买入 / 加仓（系统自动评估均价）", expanded=False):
     with st.form("add_buy_form"):
         col1, col2, col3 = st.columns(3)
@@ -71,12 +76,11 @@ with st.expander("➕ 记一笔买入 / 加仓（系统自动评估均价）", e
         if submit and sym:
             if sym not in st.session_state.records:
                 st.session_state.records[sym] = []
-            # 添加本次买入记录
             st.session_state.records[sym].append({"price": cst, "shares": shr})
             st.success(f"成功记录 {sym} 本次买入！")
             st.rerun()
 
-# 6. 核心计算逻辑：自动计算总持仓量和【加权平均成本价】
+# 6. 核心计算逻辑
 total_cost = 0.0
 total_value = 0.0
 total_daily_profit = 0.0
@@ -86,7 +90,6 @@ for sym, buy_list in list(st.session_state.records.items()):
     if not buy_list:
         continue
     
-    # 自动评估均价公式：总买入金额 / 总持股数
     stock_total_cost = sum(item["price"] * item["shares"] for item in buy_list)
     stock_total_shares = sum(item["shares"] for item in buy_list)
     avg_cost = stock_total_cost / stock_total_shares if stock_total_shares > 0 else 0.0
@@ -108,9 +111,9 @@ for sym, buy_list in list(st.session_state.records.items()):
         calculated_stocks.append({
             "sym": sym,
             "price": price,
-            "avg_cost": avg_cost, # 自动算出的评估均价
+            "avg_cost": avg_cost,
             "shares": stock_total_shares,
-            "buy_count": len(buy_list), # 累计买入笔数
+            "buy_count": len(buy_list),
             "profit": profit,
             "profit_ratio": profit_ratio,
             "daily_profit": daily_profit,
@@ -136,7 +139,7 @@ with col_total2:
 
 st.write("---")
 
-# 📱 8. 持仓明细展示（突出显示【评估均价】）
+# 📱 8. 单只股票卡片（大字高对比度版本）
 st.write("### 📈 我的持仓明细")
 if not calculated_stocks:
     st.info("💡 当前没有记录，请点击上方“➕”记一笔买入！")
@@ -148,19 +151,21 @@ else:
         d_color = "profit-up" if s["daily_profit"] >= 0 else "profit-down"
         d_sign = "+" if s["daily_profit"] >= 0 else ""
         
+        # 渲染大字卡片
         st.markdown(f"""
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 20px; font-weight: bold; color: #ffffff;">{s['sym']}</span>
-                    <span style="font-size: 18px; font-weight: bold; color: #ffffff;">实时价: ${s['price']:.2f} USD</span>
+                    <span style="font-size: 22px; font-weight: bold; color: #ffffff;">{s['sym']}</span>
+                    <span style="font-size: 19px; font-weight: bold; color: #ffffff;">实时价: ${s['price']:.2f}</span>
                 </div>
-                <div style="margin-top: 5px; color: #1E90FF; font-size: 14px; font-weight: bold;">
-                    📐 评估均价: ${s['avg_cost']:.2f} USD | 总持仓: {s['shares']}股 (分{s['buy_count']}次买入)
+                <div style="margin-top: 8px; margin-bottom: 4px;">
+                    <span class="highlight-text">📐 评估均价: ${s['avg_cost']:.2f} USD</span>
+                    <span style="color: #ffffff; font-size: 15px; font-weight: bold; margin-left: 10px;">| 持仓: {s['shares']}股</span>
                 </div>
-                <hr style="margin: 8px 0; border-color: #555;">
-                <div style="display: flex; justify-content: space-between; font-size: 14px;">
-                    <div>今日波动: <span class="{d_color}">{d_sign}${s['daily_profit']:.2f} ({d_sign}{s['daily_ratio']:.2f}%)</span></div>
-                    <div>累计盈亏: <span class="{p_color}">{p_sign}${s['profit']:.2f} ({p_sign}{s['profit_ratio']:.2f}%)</span></div>
+                <hr style="margin: 10px 0; border-color: #444466;">
+                <div style="display: flex; justify-content: space-between;">
+                    <div>今日波动:<br><span class="{d_color}">{d_sign}${s['daily_profit']:.2f} ({d_sign}{s['daily_ratio']:.2f}%)</span></div>
+                    <div>累计盈亏:<br><span class="{p_color}">{p_sign}${s['profit']:.2f} ({p_sign}{s['profit_ratio']:.2f}%)</span></div>
                 </div>
             </div>
         """, unsafe_allow_html=True)
