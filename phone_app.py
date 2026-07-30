@@ -2,6 +2,8 @@ import streamlit as st
 import streamlit.components.v1 as components
 import urllib.request
 import re
+import json
+import os
 
 # 1. 页面配置
 st.set_page_config(
@@ -11,7 +13,35 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# 2. 自定义高对比度、大字、尊享专业 CSS 样式
+# 💾 数据持久化读写逻辑（本地 JSON 文件存储，保证永远不丢数据）
+DATA_FILE = "mom_portfolio.json"
+
+def load_records():
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            pass
+    # 默认数据
+    return {
+        "GOOG": [
+            {"price": 160.0, "shares": 10}
+        ]
+    }
+
+def save_records(data):
+    try:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"保存失败: {e}")
+
+# 初始化 session_state 数据
+if "records" not in st.session_state:
+    st.session_state.records = load_records()
+
+# 2. 自定义 CSS 样式
 st.markdown("""
     <style>
     .big-font { font-size:26px !important; font-weight: bold; }
@@ -53,9 +83,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("👑 妈妈尊享·美股智能看板")
-st.caption("📱 自动评估均价 · 多次买入管理 · 双币种折算")
+st.caption("📱 自动评估均价 · 永久自动保存 · 双币种折算")
 
-# 3. 新浪实时行情与汇率获取
+# 3. 行情与汇率函数
 def get_sina_price(symbol):
     sina_symbol = f"gb_{symbol.lower().strip()}"
     url = f"https://hq.sinajs.cn/list={sina_symbol}"
@@ -73,7 +103,6 @@ def get_sina_price(symbol):
         pass
     return None, None
 
-# 获取美元对人民币大约汇率（默认 7.25，带容错）
 def get_usd_cny_rate():
     try:
         url = "https://hq.sinajs.cn/list=fx_susdcny"
@@ -90,16 +119,7 @@ def get_usd_cny_rate():
 
 usd_rate = get_usd_cny_rate()
 
-# 4. 初始化持仓数据
-if "records" not in st.session_state:
-    st.session_state.records = {
-        "GOOG": [
-            {"price": 160.0, "shares": 10},
-            {"price": 175.0, "shares": 5}
-        ]
-    }
-
-# 5. ➕ 建仓/添加新股票
+# 4. ➕ 建仓/添加新股票
 with st.expander("➕ 添加新股票 / 建仓", expanded=False):
     with st.form("add_new_stock_form"):
         col1, col2, col3 = st.columns(3)
@@ -110,15 +130,16 @@ with st.expander("➕ 添加新股票 / 建仓", expanded=False):
         with col3:
             shr = st.number_input("买入股数", value=10, min_value=1, step=1)
         
-        submit = st.form_submit_button("确认建仓")
+        submit = st.form_submit_button("确认建仓并保存")
         if submit and sym:
             if sym not in st.session_state.records:
                 st.session_state.records[sym] = []
             st.session_state.records[sym].append({"price": cst, "shares": shr})
-            st.success(f"成功添加股票 {sym}！")
+            save_records(st.session_state.records) # 💾 永久保存
+            st.success(f"成功添加并保存股票 {sym}！")
             st.rerun()
 
-# 6. 核心计算逻辑
+# 5. 核心计算逻辑
 total_cost = 0.0
 total_value = 0.0
 total_daily_profit = 0.0
@@ -161,16 +182,16 @@ for sym, buy_list in list(st.session_state.records.items()):
 total_profit = total_value - total_cost
 total_profit_ratio = (total_profit / total_cost) * 100 if total_cost > 0 else 0
 
-# 🌟 7. 智能温馨 AI 简报（专业体贴拉满）
+# 🌟 6. 顶部智能简报
 rmb_profit = total_profit * usd_rate
 if total_profit >= 0:
-    ai_msg = f"☀️ 妈妈今天心情不错！当前累计盈利 ${total_profit:.2f} USD（约合人民币 ¥{rmb_profit:.2f} 元），继续保持！"
+    ai_msg = f"☀️ 妈妈今天心情不错！当前累计盈利 ${total_profit:.2f} USD（约合人民币 ¥{rmb_profit:.2f} 元）"
 else:
-    ai_msg = f"🌙 股市偶有波动，当前累计调整 ${abs(total_profit):.2f} USD（约合人民币 ¥{abs(rmb_profit):.2f} 元），保持好心态！"
+    ai_msg = f"🌙 股市偶有波动，当前累计调整 ${abs(total_profit):.2f} USD（约合人民币 ¥{abs(rmb_profit):.2f} 元）"
 
 st.markdown(f'<div class="ai-banner">{ai_msg}</div>', unsafe_allow_html=True)
 
-# 📊 8. 顶部资产仪表盘（含人民币参考折算）
+# 📊 7. 资产仪表盘
 st.write("### 📊 资产大盘")
 col_total1, col_total2 = st.columns(2)
 with col_total1:
@@ -189,7 +210,7 @@ with col_total2:
 st.caption(f"当前参考汇率: 1 USD ≈ {usd_rate:.2f} CNY")
 st.write("---")
 
-# 📱 9. 股票明细卡片
+# 📱 8. 股票明细卡片
 st.write("### 📈 我的持仓明细与买入管理")
 if not calculated_stocks:
     st.info("💡 当前没有记录，请点击上方“➕”建仓添加股票！")
@@ -201,7 +222,6 @@ else:
         d_color = "profit-up" if s["daily_profit"] >= 0 else "profit-down"
         d_sign = "+" if s["daily_profit"] >= 0 else ""
         
-        # 卡片整体
         st.markdown(f"""
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -226,7 +246,6 @@ else:
             </div>
         """, unsafe_allow_html=True)
         
-        # 加仓与买入明细折叠菜单
         c1, c2 = st.columns([3, 1])
         with c1:
             with st.expander(f"➕ 加仓 {s['sym']} / 查看 {len(s['buy_list'])} 次买入明细"):
@@ -242,17 +261,18 @@ else:
                     with col_b2:
                         add_shares = st.number_input("加仓买入股数", value=10, min_value=1, key=f"s_{s['sym']}")
                     
-                    if st.form_submit_button("确认加仓（自动评估最新均价）"):
+                    if st.form_submit_button("确认加仓并永久保存"):
                         st.session_state.records[s['sym']].append({"price": add_price, "shares": add_shares})
-                        st.success(f"加仓成功！{s['sym']} 评估均价已更新。")
+                        save_records(st.session_state.records) # 💾 永久保存
+                        st.success(f"加仓保存成功！")
                         st.rerun()
 
         with c2:
             if st.button("🗑️ 清空", key=f"del_{s['sym']}"):
                 del st.session_state.records[s['sym']]
+                save_records(st.session_state.records) # 💾 永久保存
                 st.rerun()
 
-        # 精简走势图
         tv_mini_html = f"""
         <div class="tradingview-widget-container">
           <div id="tradingview_mini_{s['sym']}"></div>
