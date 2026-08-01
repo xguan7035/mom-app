@@ -23,7 +23,6 @@ def load_records_from_cloud():
         return {}
     
     url = f"https://api.jsonbin.io/v3/b/{BIN_ID}/latest"
-    # 添加 User-Agent 规避 403 拦截
     headers = {
         "X-Master-Key": API_KEY,
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)"
@@ -102,7 +101,7 @@ st.markdown("""
 st.title("👑 妈妈尊享·美股智能看板")
 st.caption("📱 云端实时同步 · 零丢失")
 
-# ==================== 4. 行情获取与汇率 ====================
+# ==================== 4. 行情获取与修正后的实时汇率 ====================
 def get_sina_price(symbol):
     sina_symbol = f"gb_{symbol.lower().strip()}"
     url = f"https://hq.sinajs.cn/list={sina_symbol}"
@@ -121,18 +120,34 @@ def get_sina_price(symbol):
     return None, None
 
 def get_usd_cny_rate():
+    # 尝试腾讯财经美元兑人民币实时汇率接口
+    try:
+        url = "https://qt.gtimg.cn/q=fx_susdcny"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=3) as response:
+            res_text = response.read().decode('gbk')
+            parts = res_text.split('~')
+            if len(parts) > 3 and float(parts[3]) > 0:
+                return float(parts[3])
+    except:
+        pass
+        
+    # 备用：新浪财经汇率接口
     try:
         url = "https://hq.sinajs.cn/list=fx_susdcny"
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        req = urllib.request.Request(url, headers=headers)
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=3) as response:
             res_text = response.read().decode('gbk')
             data_match = re.search(r'"([^"]*)"', res_text)
             if data_match and data_match.group(1):
-                return float(data_match.group(1).split(',')[1])
+                rate = float(data_match.group(1).split(',')[1])
+                if rate > 0:
+                    return rate
     except:
         pass
-    return 7.25
+        
+    # 默认兜底参考汇率（6.95）
+    return 6.95
 
 usd_rate = get_usd_cny_rate()
 
