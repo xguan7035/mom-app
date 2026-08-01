@@ -46,8 +46,11 @@ def save_records_to_cloud(data):
         st.error("请先配置正确的 BIN_ID 和 API_KEY！")
         return False
     
+    # 💡 核心修复：防止数据全被清空时传 {} 导致 JSONBin 报 HTTP 400 错误
+    save_data = data.copy() if data else {"_placeholder": True}
+    
     url = f"https://api.jsonbin.io/v3/b/{BIN_ID}"
-    req_data = json.dumps(data).encode('utf-8')
+    req_data = json.dumps(save_data).encode('utf-8')
     headers = {
         "Content-Type": "application/json",
         "X-Master-Key": API_KEY,
@@ -58,7 +61,7 @@ def save_records_to_cloud(data):
         with urllib.request.urlopen(req, timeout=5) as response:
             return True
     except urllib.error.HTTPError as e:
-        st.error(f"❌ 保存失败 (HTTP {e.code})：API Key 权限不足或无权修改此 Bin。")
+        st.error(f"❌ 保存失败 (HTTP {e.code})：请检查网络或 Bin 配置。")
         return False
     except Exception as e:
         st.error(f"⚠️ 云端保存异常: {e}")
