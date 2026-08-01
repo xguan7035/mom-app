@@ -4,55 +4,110 @@ import urllib.request
 import re
 import json
 
-# 1. 页面配置
-st.set_page_config(page_title="妈妈尊享美股看板", page_icon="👑", layout="centered")
+# ==================== 1. 页面基本配置 ====================
+st.set_page_config(
+    page_title="妈妈尊享·美股智能看板", 
+    page_icon="👑", 
+    layout="centered",
+    initial_sidebar_state="collapsed"
+)
 
-# ☁️ 云端数据库配置 (去 jsonbin.io 申请免费 API)
+# ==================== 2. JSONBin 云端永久数据库配置 ====================
+# ⚠️ 请把你的 BIN_ID 和 API_KEY 填在双引号中间，千万不要删掉双引号！
 BIN_ID = "6a6e17b93919920ec48559ef"
 API_KEY = "$2a$10$2Mr4re2G.zDW2REgzdTaheK8pNC0YWtcdBzBti4zunXqf6nySkqda"
 
-# 云端读取
-def load_from_cloud():
+# 云端读取数据
+def load_records_from_cloud():
+    if not BIN_ID or "你的" in BIN_ID:
+        return {"GOOG": [{"price": 160.0, "shares": 10}]}
+    
     url = f"https://api.jsonbin.io/v3/b/{BIN_ID}/latest"
-    req = urllib.request.Request(url, headers={"X-Master-Key": API_KEY})
+    req = urllib.request.Request(url, headers={
+        "X-Master-Key": API_KEY,
+        "X-Bin-Meta": "false"
+    })
     try:
         with urllib.request.urlopen(req, timeout=5) as response:
-            res = json.loads(response.read().decode('utf-8'))
-            return res.get("record", {})
-    except:
+            data = json.loads(response.read().decode('utf-8'))
+            return data
+    except Exception as e:
+        st.warning(f"云端读取提示: {e}")
         return {}
 
-# 云端保存
-def save_to_cloud(data):
+# 云端保存数据
+def save_records_to_cloud(data):
+    if not BIN_ID or "你的" in BIN_ID:
+        st.error("请先配置 BIN_ID 和 API_KEY！")
+        return False
+    
     url = f"https://api.jsonbin.io/v3/b/{BIN_ID}"
-    headers = {
-        "Content-Type": "application/json",
-        "X-Master-Key": API_KEY
-    }
-    req = urllib.request.Request(url, data=json.dumps(data).encode('utf-8'), headers=headers, method='PUT')
+    req_data = json.dumps(data).encode('utf-8')
+    req = urllib.request.Request(
+        url, 
+        data=req_data, 
+        headers={
+            "Content-Type": "application/json",
+            "X-Master-Key": API_KEY
+        }, 
+        method='PUT'
+    )
     try:
-        urllib.request.urlopen(req, timeout=5)
+        with urllib.request.urlopen(req, timeout=5) as response:
+            return True
     except Exception as e:
-        st.error(f"云端同步失败: {e}")
+        st.error(f"⚠️ 保存到云端失败: {e}")
+        return False
 
-# 初始化数据：优先从云端拉取
-if "portfolio" not in st.session_state:
-    st.session_state.portfolio = load_from_cloud()
+# 初始化 Session State（优先从云端拉取）
+if "records" not in st.session_state:
+    st.session_state.records = load_records_from_cloud()
 
-# 样式定义
+# ==================== 3. 复原精美 CSS 样式 ====================
 st.markdown("""
     <style>
     .big-font { font-size:26px !important; font-weight: bold; }
-    .profit-up { color: #00ff66 !important; font-weight: bold; font-size: 20px !important; }
-    .profit-down { color: #ff5555 !important; font-weight: bold; font-size: 20px !important; }
-    .card { background-color: #181924; padding: 16px; border-radius: 12px; margin-bottom: 12px; border: 1px solid #3b3d54; }
+    .profit-up { color: #00ff66 !important; font-weight: bold; font-size: 18px !important; }
+    .profit-down { color: #ff5555 !important; font-weight: bold; font-size: 18px !important; }
+    
+    .card {
+        background-color: #181924;
+        padding: 16px;
+        border-radius: 12px;
+        margin-bottom: 12px;
+        border: 1px solid #3b3d54;
+        border-left: 6px solid #00d2ff;
+    }
+    .ai-banner {
+        background: linear-gradient(135deg, #2b1055, #7597de);
+        padding: 12px 16px;
+        border-radius: 10px;
+        color: #ffffff;
+        font-weight: bold;
+        font-size: 15px;
+        margin-bottom: 15px;
+    }
+    .avg-price-title {
+        color: #aaaaaa !important;
+        font-size: 14px !important;
+    }
+    .avg-price-val {
+        color: #ffd700 !important;
+        font-size: 22px !important;
+        font-weight: bold !important;
+    }
+    .label-text {
+        color: #ffffff !important;
+        font-size: 15px !important;
+        font-weight: bold !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
 st.title("👑 妈妈尊享·美股智能看板")
-st.caption("☁️ 云端实时同步版 · 退出后台数据永久保存")
+st.caption("📱 自动评估均价 · 云端永久保存 · 零丢失")
 
-# 行情获取函数
+# ==================== 4. 实时行情与汇率获取 ====================
 def get_sina_price(symbol):
     sina_symbol = f"gb_{symbol.lower().strip()}"
     url = f"https://hq.sinajs.cn/list={sina_symbol}"
@@ -70,44 +125,200 @@ def get_sina_price(symbol):
         pass
     return None, None
 
-# 修改/保存持仓
-with st.expander("📝 录入/更新持仓（修改后云端自动同步）"):
-    with st.form("add_form"):
-        sym = st.text_input("股票代码 (如 NVDA/AAPL)").upper().strip()
-        cost = st.number_input("买入成本单价 ($)", min_value=0.01)
-        shares = st.number_input("持有股数", min_value=1, step=1)
+def get_usd_cny_rate():
+    try:
+        url = "https://hq.sinajs.cn/list=fx_susdcny"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=3) as response:
+            res_text = response.read().decode('gbk')
+            data_match = re.search(r'"([^"]*)"', res_text)
+            if data_match and data_match.group(1):
+                return float(data_match.group(1).split(',')[1])
+    except:
+        pass
+    return 7.25
+
+usd_rate = get_usd_cny_rate()
+
+# ==================== 5. ➕ 建仓 / 添加新股票 ====================
+with st.expander("➕ 添加新股票 / 建仓", expanded=not bool(st.session_state.records)):
+    with st.form("add_new_stock_form"):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            sym = st.text_input("股票代码", value="NVDA").upper().strip()
+        with col2:
+            cst = st.number_input("买入单价($)", value=100.0, min_value=0.01)
+        with col3:
+            shr = st.number_input("买入股数", value=10, min_value=1, step=1)
         
-        if st.form_submit_button("💾 确认并同步到云端"):
-            if sym and cost > 0 and shares > 0:
-                st.session_state.portfolio[sym] = {"cost": cost, "shares": shares}
-                save_to_cloud(st.session_state.portfolio) # 写入云端
-                st.success(f"{sym} 已成功同步到云端！")
+        submit = st.form_submit_button("确认建仓并同步至云端")
+        if submit and sym:
+            if sym not in st.session_state.records:
+                st.session_state.records[sym] = []
+            st.session_state.records[sym].append({"price": cst, "shares": shr})
+            
+            if save_records_to_cloud(st.session_state.records):
+                st.success(f"已成功添加并云端锁定了股票 {sym}！")
                 st.rerun()
 
-# 页面展示逻辑
-if not st.session_state.portfolio:
-    st.info("💡 当前云端暂无数据，请在上方录入股票！")
+# ==================== 6. 核心资产计算逻辑 ====================
+total_cost = 0.0
+total_value = 0.0
+total_daily_profit = 0.0
+calculated_stocks = []
+
+for sym, buy_list in list(st.session_state.records.items()):
+    if not buy_list:
+        continue
+    
+    stock_total_cost = sum(item["price"] * item["shares"] for item in buy_list)
+    stock_total_shares = sum(item["shares"] for item in buy_list)
+    avg_cost = stock_total_cost / stock_total_shares if stock_total_shares > 0 else 0.0
+    
+    price, prev_close = get_sina_price(sym)
+    if price:
+        current_value = price * stock_total_shares
+        profit = current_value - stock_total_cost
+        profit_ratio = (profit / stock_total_cost) * 100 if stock_total_cost > 0 else 0
+        
+        daily_change = price - prev_close
+        daily_profit = daily_change * stock_total_shares
+        daily_ratio = (daily_change / prev_close) * 100 if prev_close > 0 else 0
+        
+        total_cost += stock_total_cost
+        total_value += current_value
+        total_daily_profit += daily_profit
+        
+        calculated_stocks.append({
+            "sym": sym,
+            "price": price,
+            "avg_cost": avg_cost,
+            "shares": stock_total_shares,
+            "buy_list": buy_list,
+            "profit": profit,
+            "profit_ratio": profit_ratio,
+            "daily_profit": daily_profit,
+            "daily_ratio": daily_ratio
+        })
+
+total_profit = total_value - total_cost
+
+# ==================== 7. 🌟 恢复顶部心情简报与大盘 ====================
+if calculated_stocks:
+    rmb_profit = total_profit * usd_rate
+    if total_profit >= 0:
+        ai_msg = f"☀️ 妈妈今天心情不错！当前累计盈利 ${total_profit:.2f} USD（约合人民币 ¥{rmb_profit:.2f} 元）"
+    else:
+        ai_msg = f"🌙 股市偶有波动，当前累计调整 ${abs(total_profit):.2f} USD（约合人民币 ¥{abs(rmb_profit):.2f} 元）"
+
+    st.markdown(f'<div class="ai-banner">{ai_msg}</div>', unsafe_allow_html=True)
+
+    st.write("### 📊 资产大盘")
+    col_total1, col_total2 = st.columns(2)
+    with col_total1:
+        color_class = "profit-up" if total_profit >= 0 else "profit-down"
+        sign = "+" if total_profit >= 0 else ""
+        st.markdown(f"历史总盈亏<br><span class='big-font {color_class}'>{sign}${total_profit:.2f}</span>", unsafe_allow_html=True)
+        st.markdown(f"<span class='label-text'>约合人民币：</span><span class='{color_class}'>{sign}¥{rmb_profit:.2f}</span>", unsafe_allow_html=True)
+
+    with col_total2:
+        color_class_d = "profit-up" if total_daily_profit >= 0 else "profit-down"
+        sign_d = "+" if total_daily_profit >= 0 else ""
+        rmb_daily = total_daily_profit * usd_rate
+        st.markdown(f"今日总波动<br><span class='big-font {color_class_d}'>{sign_d}${total_daily_profit:.2f}</span>", unsafe_allow_html=True)
+        st.markdown(f"<span class='label-text'>今日约合：</span><span class='{color_class_d}'>{sign_d}¥{rmb_daily:.2f}</span>", unsafe_allow_html=True)
+
+    st.caption(f"当前参考汇率: 1 USD ≈ {usd_rate:.2f} CNY")
+    st.write("---")
+
+# ==================== 8. 📱 恢复股票明细与多笔加仓 ====================
+st.write("### 📈 我的持仓明细与买入管理")
+if not calculated_stocks:
+    st.info("💡 当前云端没有记录，请点击上方“➕”添加你的股票！")
 else:
-    for sym, info in list(st.session_state.portfolio.items()):
-        price, prev_close = get_sina_price(sym)
-        if price:
-            cost = info["cost"]
-            shares = info["shares"]
-            profit = (price - cost) * shares
-            p_color = "profit-up" if profit >= 0 else "profit-down"
-            
-            st.markdown(f"""
-                <div class="card">
-                    <div style="display:flex; justify-content:space-between;">
-                        <span style="font-size:24px; font-weight:bold; color:#fff;">{sym}</span>
-                        <span style="font-size:20px; color:#fff;">现价: ${price:.2f}</span>
-                    </div>
-                    <div style="color:#aaa; margin-top:5px;">成本: ${cost:.2f} | 持仓: {shares} 股</div>
-                    <div class="{p_color}" style="margin-top:8px;">持仓盈亏: ${profit:.2f}</div>
+    for s in calculated_stocks:
+        p_color = "profit-up" if s["profit"] >= 0 else "profit-down"
+        p_sign = "+" if s["profit"] >= 0 else ""
+        
+        d_color = "profit-up" if s["daily_profit"] >= 0 else "profit-down"
+        d_sign = "+" if s["daily_profit"] >= 0 else ""
+        
+        st.markdown(f"""
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 26px; font-weight: bold; color: #ffffff;">{s['sym']}</span>
+                    <span style="font-size: 20px; font-weight: bold; color: #ffffff;">实时价: ${s['price']:.2f}</span>
                 </div>
-            """, unsafe_allow_html=True)
-            
-            if st.button(f"🗑️ 删除 {sym}", key=f"del_{sym}"):
-                del st.session_state.portfolio[sym]
-                save_to_cloud(st.session_state.portfolio)
-                st.rerun()
+                <div style="margin-top: 10px; background-color: #252836; padding: 10px; border-radius: 8px;">
+                    <div class="avg-price-title">📐 系统加权评估均价 (分 {len(s['buy_list'])} 次买入)</div>
+                    <div class="avg-price-val">${s['avg_cost']:.2f} USD <span style="font-size: 16px; color: #ffffff; font-weight: normal;">| 持仓: {s['shares']} 股</span></div>
+                </div>
+                <hr style="margin: 12px 0; border-color: #555577;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <div class="label-text">今日波动</div>
+                        <div class="{d_color}">{d_sign}${s['daily_profit']:.2f}<br>({d_sign}{s['daily_ratio']:.2f}%)</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div class="label-text">累计盈亏</div>
+                        <div class="{p_color}">{p_sign}${s['profit']:.2f}<br>({p_sign}{s['profit_ratio']:.2f}%)</div>
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            with st.expander(f"➕ 加仓 {s['sym']} / 查看 {len(s['buy_list'])} 次买入明细"):
+                st.write("**📝 历史分批买入记录：**")
+                for idx, b in enumerate(s['buy_list']):
+                    st.caption(f"第 {idx+1} 笔: ${b['price']:.2f} USD × {b['shares']} 股")
+                
+                st.write("**➕ 记录新一笔加仓：**")
+                with st.form(f"buy_more_form_{s['sym']}"):
+                    col_b1, col_b2 = st.columns(2)
+                    with col_b1:
+                        add_price = st.number_input("加仓买入价($)", value=s['price'], key=f"p_{s['sym']}")
+                    with col_b2:
+                        add_shares = st.number_input("加仓买入股数", value=10, min_value=1, key=f"s_{s['sym']}")
+                    
+                    if st.form_submit_button("确认加仓并永久保存"):
+                        st.session_state.records[s['sym']].append({"price": add_price, "shares": add_shares})
+                        if save_records_to_cloud(st.session_state.records):
+                            st.success("加仓已成功同步至云端！")
+                            st.rerun()
+
+        with c2:
+            if st.button("🗑️ 清空", key=f"del_{s['sym']}"):
+                del st.session_state.records[s['sym']]
+                if save_records_to_cloud(st.session_state.records):
+                    st.rerun()
+
+        # Mini K线图
+        tv_mini_html = f"""
+        <div class="tradingview-widget-container">
+          <div id="tradingview_mini_{s['sym']}"></div>
+          <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+          <script type="text/javascript">
+          new TradingView.widget({{
+            "width": "100%",
+            "height": 200,
+            "symbol": "{s['sym']}",
+            "interval": "D",
+            "timezone": "Etc/UTC",
+            "theme": "dark",
+            "style": "2",
+            "locale": "zh_CN",
+            "toolbar_bg": "#f1f3f6",
+            "enable_publishing": false,
+            "hide_top_toolbar": true,
+            "hide_legend": true,
+            "save_image": false,
+            "container_id": "tradingview_mini_{s['sym']}"
+          }});
+          </script>
+        </div>
+        """
+        components.html(tv_mini_html, height=205)
+        st.write("---")
