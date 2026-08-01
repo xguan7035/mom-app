@@ -40,7 +40,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("👑 妈妈尊享·美股智能看板")
-st.caption("📱 1500元高级售后版 · 实时成本保存 · 零乱码")
+st.caption("📱实时成本保存 · 零乱码")
 
 # 3. 数据存储（利用 Streamlit query_params 进行轻量级云端 URL 持久化，或持久化 session）
 # 确保没有默认干扰股票！只有妈妈自己输入的股票！
