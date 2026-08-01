@@ -1,6 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import urllib.request
+import urllib.error
 import re
 import json
 
@@ -13,57 +14,62 @@ st.set_page_config(
 )
 
 # ==================== 2. JSONBin 云端永久数据库配置 ====================
-# ⚠️ 请把你的 BIN_ID 和 API_KEY 填在双引号中间，千万不要删掉双引号！
-BIN_ID = "6a6e17b93919920ec48559ef"
+# ⚠️ 确保使用 Master Key！保留双引号！
+BIN_ID = "6a6e1c96da38895dfead16d9"
 API_KEY = "$2a$10$2Mr4re2G.zDW2REgzdTaheK8pNC0YWtcdBzBti4zunXqf6nySkqda"
 
-# 云端读取数据
 def load_records_from_cloud():
     if not BIN_ID or "你的" in BIN_ID:
-        return {"GOOG": [{"price": 160.0, "shares": 10}]}
+        return {}
     
     url = f"https://api.jsonbin.io/v3/b/{BIN_ID}/latest"
-    req = urllib.request.Request(url, headers={
+    # 添加 User-Agent 规避 403 拦截
+    headers = {
         "X-Master-Key": API_KEY,
-        "X-Bin-Meta": "false"
-    })
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)"
+    }
+    req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=5) as response:
-            data = json.loads(response.read().decode('utf-8'))
-            return data
+            res = json.loads(response.read().decode('utf-8'))
+            return res.get("record", {})
+    except urllib.error.HTTPError as e:
+        if e.code == 403:
+            st.error("❌ 403 错误：请检查 API_KEY 是否为 Master Key，或 BIN_ID 是否正确！")
+        else:
+            st.error(f"云端读取失败 (HTTP {e.code})")
+        return {}
     except Exception as e:
-        st.warning(f"云端读取提示: {e}")
         return {}
 
-# 云端保存数据
 def save_records_to_cloud(data):
     if not BIN_ID or "你的" in BIN_ID:
-        st.error("请先配置 BIN_ID 和 API_KEY！")
+        st.error("请先配置正确的 BIN_ID 和 API_KEY！")
         return False
     
     url = f"https://api.jsonbin.io/v3/b/{BIN_ID}"
     req_data = json.dumps(data).encode('utf-8')
-    req = urllib.request.Request(
-        url, 
-        data=req_data, 
-        headers={
-            "Content-Type": "application/json",
-            "X-Master-Key": API_KEY
-        }, 
-        method='PUT'
-    )
+    headers = {
+        "Content-Type": "application/json",
+        "X-Master-Key": API_KEY,
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)"
+    }
+    req = urllib.request.Request(url, data=req_data, headers=headers, method='PUT')
     try:
         with urllib.request.urlopen(req, timeout=5) as response:
             return True
+    except urllib.error.HTTPError as e:
+        st.error(f"❌ 保存失败 (HTTP {e.code})：API Key 权限不足或无权修改此 Bin。")
+        return False
     except Exception as e:
-        st.error(f"⚠️ 保存到云端失败: {e}")
+        st.error(f"⚠️ 云端保存异常: {e}")
         return False
 
-# 初始化 Session State（优先从云端拉取）
+# 初始化数据
 if "records" not in st.session_state:
     st.session_state.records = load_records_from_cloud()
 
-# ==================== 3. 复原精美 CSS 样式 ====================
+# ==================== 3. 页面样式 ====================
 st.markdown("""
     <style>
     .big-font { font-size:26px !important; font-weight: bold; }
@@ -87,27 +93,16 @@ st.markdown("""
         font-size: 15px;
         margin-bottom: 15px;
     }
-    .avg-price-title {
-        color: #aaaaaa !important;
-        font-size: 14px !important;
-    }
-    .avg-price-val {
-        color: #ffd700 !important;
-        font-size: 22px !important;
-        font-weight: bold !important;
-    }
-    .label-text {
-        color: #ffffff !important;
-        font-size: 15px !important;
-        font-weight: bold !important;
-    }
+    .avg-price-title { color: #aaaaaa !important; font-size: 14px !important; }
+    .avg-price-val { color: #ffd700 !important; font-size: 22px !important; font-weight: bold !important; }
+    .label-text { color: #ffffff !important; font-size: 15px !important; font-weight: bold !important; }
     </style>
 """, unsafe_allow_html=True)
 
 st.title("👑 妈妈尊享·美股智能看板")
-st.caption("📱 自动评估均价 · 云端永久保存 · 零丢失")
+st.caption("📱 云端实时同步 · 零丢失")
 
-# ==================== 4. 实时行情与汇率获取 ====================
+# ==================== 4. 行情获取与汇率 ====================
 def get_sina_price(symbol):
     sina_symbol = f"gb_{symbol.lower().strip()}"
     url = f"https://hq.sinajs.cn/list={sina_symbol}"
@@ -162,7 +157,7 @@ with st.expander("➕ 添加新股票 / 建仓", expanded=not bool(st.session_st
                 st.success(f"已成功添加并云端锁定了股票 {sym}！")
                 st.rerun()
 
-# ==================== 6. 核心资产计算逻辑 ====================
+# ==================== 6. 核心资产计算 ====================
 total_cost = 0.0
 total_value = 0.0
 total_daily_profit = 0.0
@@ -204,7 +199,7 @@ for sym, buy_list in list(st.session_state.records.items()):
 
 total_profit = total_value - total_cost
 
-# ==================== 7. 🌟 恢复顶部心情简报与大盘 ====================
+# ==================== 7. 🌟 顶部心情简报 ====================
 if calculated_stocks:
     rmb_profit = total_profit * usd_rate
     if total_profit >= 0:
@@ -232,7 +227,7 @@ if calculated_stocks:
     st.caption(f"当前参考汇率: 1 USD ≈ {usd_rate:.2f} CNY")
     st.write("---")
 
-# ==================== 8. 📱 恢复股票明细与多笔加仓 ====================
+# ==================== 8. 📱 持仓管理 ====================
 st.write("### 📈 我的持仓明细与买入管理")
 if not calculated_stocks:
     st.info("💡 当前云端没有记录，请点击上方“➕”添加你的股票！")
