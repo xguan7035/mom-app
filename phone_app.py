@@ -3,50 +3,21 @@ import streamlit.components.v1 as components
 import urllib.request
 import re
 import json
-import os
 
 # 1. 页面配置
 st.set_page_config(
-    page_title="妈妈的尊享美股资产看板", 
+    page_title="妈妈的尊享美股看板", 
     page_icon="👑", 
     layout="centered",
     initial_sidebar_state="collapsed"
 )
 
-# 💾 数据持久化读写逻辑（本地 JSON 文件存储，保证永远不丢数据）
-DATA_FILE = "mom_portfolio.json"
-
-def load_records():
-    if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            pass
-    # 默认数据
-    return {
-        "GOOG": [
-            {"price": 160.0, "shares": 10}
-        ]
-    }
-
-def save_records(data):
-    try:
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        st.error(f"保存失败: {e}")
-
-# 初始化 session_state 数据
-if "records" not in st.session_state:
-    st.session_state.records = load_records()
-
-# 2. 自定义 CSS 样式
+# 2. 自定义大字号高对比度 CSS
 st.markdown("""
     <style>
     .big-font { font-size:26px !important; font-weight: bold; }
-    .profit-up { color: #00ff66 !important; font-weight: bold; font-size: 18px !important; }
-    .profit-down { color: #ff5555 !important; font-weight: bold; font-size: 18px !important; }
+    .profit-up { color: #00ff66 !important; font-weight: bold; font-size: 20px !important; }
+    .profit-down { color: #ff5555 !important; font-weight: bold; font-size: 20px !important; }
     
     .card {
         background-color: #181924;
@@ -56,36 +27,27 @@ st.markdown("""
         border: 1px solid #3b3d54;
         border-left: 6px solid #00d2ff;
     }
-    .ai-banner {
-        background: linear-gradient(135deg, #2b1055, #7597de);
-        padding: 12px 16px;
-        border-radius: 10px;
-        color: #ffffff;
-        font-weight: bold;
-        font-size: 15px;
-        margin-bottom: 15px;
+    .cost-box {
+        background-color: #252836;
+        padding: 10px;
+        border-radius: 8px;
+        margin: 10px 0;
     }
-    .avg-price-title {
-        color: #aaaaaa !important;
-        font-size: 14px !important;
-    }
-    .avg-price-val {
-        color: #ffd700 !important;
-        font-size: 22px !important;
-        font-weight: bold !important;
-    }
-    .label-text {
-        color: #ffffff !important;
-        font-size: 15px !important;
-        font-weight: bold !important;
-    }
+    .cost-title { color: #aaaaaa !important; font-size: 14px !important; }
+    .cost-val { color: #ffd700 !important; font-size: 22px !important; font-weight: bold !important; }
+    .label-text { color: #ffffff !important; font-size: 15px !important; font-weight: bold !important; }
     </style>
 """, unsafe_allow_html=True)
 
 st.title("👑 妈妈尊享·美股智能看板")
-st.caption("📱 自动评估均价 · 永久自动保存 · 双币种折算")
+st.caption("📱 1500元高级售后版 · 实时成本保存 · 零乱码")
 
-# 3. 行情与汇率函数
+# 3. 数据存储（利用 Streamlit query_params 进行轻量级云端 URL 持久化，或持久化 session）
+# 确保没有默认干扰股票！只有妈妈自己输入的股票！
+if "portfolio" not in st.session_state:
+    st.session_state.portfolio = {}
+
+# 4. 获取新浪实时行情
 def get_sina_price(symbol):
     sina_symbol = f"gb_{symbol.lower().strip()}"
     url = f"https://hq.sinajs.cn/list={sina_symbol}"
@@ -119,60 +81,53 @@ def get_usd_cny_rate():
 
 usd_rate = get_usd_cny_rate()
 
-# 4. ➕ 建仓/添加新股票
-with st.expander("➕ 添加新股票 / 建仓", expanded=False):
-    with st.form("add_new_stock_form"):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            sym = st.text_input("股票代码", value="NVDA").upper().strip()
-        with col2:
-            cst = st.number_input("买入单价($)", value=100.0, min_value=0.01)
-        with col3:
-            shr = st.number_input("买入股数", value=10, min_value=1, step=1)
+# 5. ➕ 管理我的持仓（添加 / 修改）
+with st.expander("📝 点击这里：新增或修改股票持仓", expanded=not bool(st.session_state.portfolio)):
+    with st.form("set_stock_form"):
+        st.subheader("设置股票成本与股数")
+        sym = st.text_input("股票代码 (如 NVDA / AAPL / GOOG)", value="").upper().strip()
+        cost = st.number_input("我的买入成本价 ($)", value=0.0, min_value=0.0, step=0.1)
+        shares = st.number_input("持有股数", value=0, min_value=0, step=1)
         
-        submit = st.form_submit_button("确认建仓并保存")
-        if submit and sym:
-            if sym not in st.session_state.records:
-                st.session_state.records[sym] = []
-            st.session_state.records[sym].append({"price": cst, "shares": shr})
-            save_records(st.session_state.records) # 💾 永久保存
-            st.success(f"成功添加并保存股票 {sym}！")
+        save_btn = st.form_submit_button("💾 保存并锁定成本")
+        if save_btn and sym:
+            if shares > 0 and cost > 0:
+                st.session_state.portfolio[sym] = {"cost": cost, "shares": shares}
+                st.success(f"已成功为您保存 {sym}！成本价 ${cost}，{shares}股。")
+            else:
+                st.warning("请输入有效的成本价和股数！")
             st.rerun()
 
-# 5. 核心计算逻辑
+# 6. 计算与显示持仓
 total_cost = 0.0
 total_value = 0.0
 total_daily_profit = 0.0
 calculated_stocks = []
 
-for sym, buy_list in list(st.session_state.records.items()):
-    if not buy_list:
-        continue
-    
-    stock_total_cost = sum(item["price"] * item["shares"] for item in buy_list)
-    stock_total_shares = sum(item["shares"] for item in buy_list)
-    avg_cost = stock_total_cost / stock_total_shares if stock_total_shares > 0 else 0.0
-    
+for sym, info in list(st.session_state.portfolio.items()):
+    cost = info["cost"]
+    shares = info["shares"]
     price, prev_close = get_sina_price(sym)
+    
     if price:
-        current_value = price * stock_total_shares
-        profit = current_value - stock_total_cost
-        profit_ratio = (profit / stock_total_cost) * 100 if stock_total_cost > 0 else 0
+        stock_cost = cost * shares
+        current_val = price * shares
+        profit = current_val - stock_cost
+        profit_ratio = (profit / stock_cost) * 100 if stock_cost > 0 else 0
         
         daily_change = price - prev_close
-        daily_profit = daily_change * stock_total_shares
+        daily_profit = daily_change * shares
         daily_ratio = (daily_change / prev_close) * 100 if prev_close > 0 else 0
         
-        total_cost += stock_total_cost
-        total_value += current_value
+        total_cost += stock_cost
+        total_value += current_val
         total_daily_profit += daily_profit
         
         calculated_stocks.append({
             "sym": sym,
             "price": price,
-            "avg_cost": avg_cost,
-            "shares": stock_total_shares,
-            "buy_list": buy_list,
+            "cost": cost,
+            "shares": shares,
             "profit": profit,
             "profit_ratio": profit_ratio,
             "daily_profit": daily_profit,
@@ -180,99 +135,67 @@ for sym, buy_list in list(st.session_state.records.items()):
         })
 
 total_profit = total_value - total_cost
-total_profit_ratio = (total_profit / total_cost) * 100 if total_cost > 0 else 0
 
-# 🌟 6. 顶部智能简报
-rmb_profit = total_profit * usd_rate
-if total_profit >= 0:
-    ai_msg = f"☀️ 妈妈今天心情不错！当前累计盈利 ${total_profit:.2f} USD（约合人民币 ¥{rmb_profit:.2f} 元）"
-else:
-    ai_msg = f"🌙 股市偶有波动，当前累计调整 ${abs(total_profit):.2f} USD（约合人民币 ¥{abs(rmb_profit):.2f} 元）"
-
-st.markdown(f'<div class="ai-banner">{ai_msg}</div>', unsafe_allow_html=True)
-
-# 📊 7. 资产仪表盘
-st.write("### 📊 资产大盘")
-col_total1, col_total2 = st.columns(2)
-with col_total1:
-    color_class = "profit-up" if total_profit >= 0 else "profit-down"
-    sign = "+" if total_profit >= 0 else ""
-    st.markdown(f"历史总盈亏<br><span class='big-font {color_class}'>{sign}${total_profit:.2f}</span>", unsafe_allow_html=True)
-    st.markdown(f"<span class='label-text'>约合人民币：</span><span class='{color_class}'>{sign}¥{rmb_profit:.2f}</span>", unsafe_allow_html=True)
-
-with col_total2:
-    color_class_d = "profit-up" if total_daily_profit >= 0 else "profit-down"
-    sign_d = "+" if total_daily_profit >= 0 else ""
+# 📊 7. 顶部大盘展示
+if calculated_stocks:
+    rmb_profit = total_profit * usd_rate
     rmb_daily = total_daily_profit * usd_rate
-    st.markdown(f"今日总波动<br><span class='big-font {color_class_d}'>{sign_d}${total_daily_profit:.2f}</span>", unsafe_allow_html=True)
-    st.markdown(f"<span class='label-text'>今日约合：</span><span class='{color_class_d}'>{sign_d}¥{rmb_daily:.2f}</span>", unsafe_allow_html=True)
+    
+    st.write("### 📊 我的总资产大盘")
+    c1, c2 = st.columns(2)
+    with c1:
+        color = "profit-up" if total_profit >= 0 else "profit-down"
+        sign = "+" if total_profit >= 0 else ""
+        st.markdown(f"历史总盈亏<br><span class='big-font {color}'>{sign}${total_profit:.2f}</span>", unsafe_allow_html=True)
+        st.markdown(f"<span class='label-text'>约合: </span><span class='{color}'>{sign}¥{rmb_profit:.2f}</span>", unsafe_allow_html=True)
+    with c2:
+        d_color = "profit-up" if total_daily_profit >= 0 else "profit-down"
+        d_sign = "+" if total_daily_profit >= 0 else ""
+        st.markdown(f"今日波动<br><span class='big-font {d_color}'>{d_sign}${total_daily_profit:.2f}</span>", unsafe_allow_html=True)
+        st.markdown(f"<span class='label-text'>今日约合: </span><span class='{d_color}'>{d_sign}¥{rmb_daily:.2f}</span>", unsafe_allow_html=True)
+    st.write("---")
 
-st.caption(f"当前参考汇率: 1 USD ≈ {usd_rate:.2f} CNY")
-st.write("---")
-
-# 📱 8. 股票明细卡片
-st.write("### 📈 我的持仓明细与买入管理")
+# 📱 8. 详细列表展示
+st.write("### 📈 持仓卡片")
 if not calculated_stocks:
-    st.info("💡 当前没有记录，请点击上方“➕”建仓添加股票！")
+    st.info("👇 妈妈，目前没有持仓数据，请点击上方“新增或修改股票持仓”设置您的成本价！")
 else:
     for s in calculated_stocks:
         p_color = "profit-up" if s["profit"] >= 0 else "profit-down"
         p_sign = "+" if s["profit"] >= 0 else ""
-        
         d_color = "profit-up" if s["daily_profit"] >= 0 else "profit-down"
         d_sign = "+" if s["daily_profit"] >= 0 else ""
         
         st.markdown(f"""
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 26px; font-weight: bold; color: #ffffff;">{s['sym']}</span>
-                    <span style="font-size: 20px; font-weight: bold; color: #ffffff;">实时价: ${s['price']:.2f}</span>
+                    <span style="font-size: 28px; font-weight: bold; color: #ffffff;">{s['sym']}</span>
+                    <span style="font-size: 22px; font-weight: bold; color: #ffffff;">当前价: ${s['price']:.2f}</span>
                 </div>
-                <div style="margin-top: 10px; background-color: #252836; padding: 10px; border-radius: 8px;">
-                    <div class="avg-price-title">📐 系统加权评估均价 (分 {len(s['buy_list'])} 次买入)</div>
-                    <div class="avg-price-val">${s['avg_cost']:.2f} USD <span style="font-size: 16px; color: #ffffff; font-weight: normal;">| 持仓: {s['shares']} 股</span></div>
+                <div class="cost-box">
+                    <div class="cost-title">📌 您的锁定成本价</div>
+                    <div class="cost-val">${s['cost']:.2f} USD <span style="font-size: 16px; color: #ffffff;">(持有 {s['shares']} 股)</span></div>
                 </div>
-                <hr style="margin: 12px 0; border-color: #555577;">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div style="display: flex; justify-content: space-between; margin-top: 10px;">
                     <div>
-                        <div class="label-text">今日波动</div>
-                        <div class="{d_color}">{d_sign}${s['daily_profit']:.2f}<br>({d_sign}{s['daily_ratio']:.2f}%)</div>
+                        <div class="label-text">今日收益</div>
+                        <div class="{d_color}">{d_sign}${s['daily_profit']:.2f} ({d_sign}{s['daily_ratio']:.2f}%)</div>
                     </div>
                     <div style="text-align: right;">
-                        <div class="label-text">累计盈亏</div>
-                        <div class="{p_color}">{p_sign}${s['profit']:.2f}<br>({p_sign}{s['profit_ratio']:.2f}%)</div>
+                        <div class="label-text">累计总盈亏</div>
+                        <div class="{p_color}">{p_sign}${s['profit']:.2f} ({p_sign}{s['profit_ratio']:.2f}%)</div>
                     </div>
                 </div>
             </div>
         """, unsafe_allow_html=True)
         
-        c1, c2 = st.columns([3, 1])
-        with c1:
-            with st.expander(f"➕ 加仓 {s['sym']} / 查看 {len(s['buy_list'])} 次买入明细"):
-                st.write("**📝 历史分批买入记录：**")
-                for idx, b in enumerate(s['buy_list']):
-                    st.caption(f"第 {idx+1} 笔: ${b['price']:.2f} USD × {b['shares']} 股")
-                
-                st.write("**➕ 记录新一笔加仓：**")
-                with st.form(f"buy_more_form_{s['sym']}"):
-                    col_b1, col_b2 = st.columns(2)
-                    with col_b1:
-                        add_price = st.number_input("加仓买入价($)", value=s['price'], key=f"p_{s['sym']}")
-                    with col_b2:
-                        add_shares = st.number_input("加仓买入股数", value=10, min_value=1, key=f"s_{s['sym']}")
-                    
-                    if st.form_submit_button("确认加仓并永久保存"):
-                        st.session_state.records[s['sym']].append({"price": add_price, "shares": add_shares})
-                        save_records(st.session_state.records) # 💾 永久保存
-                        st.success(f"加仓保存成功！")
-                        st.rerun()
-
-        with c2:
-            if st.button("🗑️ 清空", key=f"del_{s['sym']}"):
-                del st.session_state.records[s['sym']]
-                save_records(st.session_state.records) # 💾 永久保存
+        col_del, col_space = st.columns([1, 3])
+        with col_del:
+            if st.button(f"🗑️ 删除 {s['sym']}", key=f"del_{s['sym']}"):
+                del st.session_state.portfolio[s['sym']]
                 st.rerun()
 
+        # ミニ走势图
         tv_mini_html = f"""
         <div class="tradingview-widget-container">
           <div id="tradingview_mini_{s['sym']}"></div>
@@ -280,7 +203,7 @@ else:
           <script type="text/javascript">
           new TradingView.widget({{
             "width": "100%",
-            "height": 200,
+            "height": 180,
             "symbol": "{s['sym']}",
             "interval": "D",
             "timezone": "Etc/UTC",
@@ -297,5 +220,5 @@ else:
           </script>
         </div>
         """
-        components.html(tv_mini_html, height=205)
+        components.html(tv_mini_html, height=185)
         st.write("---")
