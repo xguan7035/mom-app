@@ -182,7 +182,8 @@ total_daily_profit = 0.0
 calculated_stocks = []
 
 for sym, buy_list in list(st.session_state.records.items()):
-    if not buy_list:
+    # 💡 核心修复：防止占位符或非列表数据导致 TypeError 崩溃
+    if not isinstance(buy_list, list) or not buy_list:
         continue
     
     stock_total_cost = sum(item["price"] * item["shares"] for item in buy_list)
@@ -216,6 +217,7 @@ for sym, buy_list in list(st.session_state.records.items()):
         })
 
 total_profit = total_value - total_cost
+
 
 # ==================== 7. 🌟 顶部心情简报 ====================
 if calculated_stocks:
